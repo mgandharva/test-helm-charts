@@ -81,7 +81,6 @@ jobs:
           branch_name=release-v${{ inputs.version }}
 
           if [ "${{ inputs.release_mode }}" == "re-release" ]; then
-            # --no-tags: Avoid tag conflicts when re-releasing deleted releases
             git fetch origin --no-tags
           else
             git fetch origin
@@ -100,18 +99,15 @@ jobs:
         run: |
           curl -sSLo cr.tar.gz https://github.com/helm/chart-releaser/releases/download/v1.7.0/chart-releaser_1.7.0_linux_amd64.tar.gz
           tar -xzf cr.tar.gz
-          echo "$PWD" >> $GITHUB_PATH
+          sudo mv cr /usr/local/bin/cr
           rm cr.tar.gz
 
       - name: Upload packages (re-release mode)
         if: ${{ inputs.release_mode == 're-release' }}
         run: |
-          # --skip-existing: Only re-upload deleted releases, skip existing valid releases
-          # Users must manually delete releases before triggering re-release (see workflow description)
           cr upload --owner ${{ github.repository_owner }} --git-repo ${{ github.event.repository.name }} --token ${{ secrets.GITHUB_TOKEN }} --package-path .cr-release-packages --skip-existing
           cr index --owner ${{ github.repository_owner }} --git-repo ${{ github.event.repository.name }} --token ${{ secrets.GITHUB_TOKEN }} --push
           # Force gh-pages update to trigger pages-build-deployment
-          # cr index --push alone may not trigger downstream workflows in some cases
           git fetch origin gh-pages
           git checkout gh-pages
           git commit --allow-empty -m "Force update for re-release"
