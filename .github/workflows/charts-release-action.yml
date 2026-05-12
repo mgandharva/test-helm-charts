@@ -17,7 +17,7 @@ on:
         description: 'Release version. E.g. 1.14.0'
         required: true
       release_mode:
-        description: 'normal: release changed charts only         re-release: re-upload deleted charts'
+        description: 'normal: releases changed charts only,  re-release: re-upload deleted charts'
         required: false
         default: 'normal'
         type: choice
