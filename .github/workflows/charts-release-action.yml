@@ -54,6 +54,8 @@ jobs:
           for chart in charts/*/; do
             if [ -d "$chart" ]; then
               chart_name=$(basename "$chart")
+              echo "Building dependencies for $chart_name..."
+              helm dependency build "$chart" || echo "No dependencies to build for $chart_name"
               echo "Packaging $chart_name..."
               helm package "$chart" -d .cr-release-packages || echo "Failed to package $chart_name (likely a subchart), skipping"
             fi
