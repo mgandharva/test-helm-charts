@@ -1,5 +1,50 @@
 apiVersion: v1
 entries:
+  container-storage-modules:
+  - apiVersion: v2
+    appVersion: 1.10.0
+    created: "2026-05-12T13:54:44.066306887Z"
+    dependencies:
+    - condition: csi-powerstore.enabled
+      name: csi-powerstore
+      repository: https://mgandharva.github.io/test-helm-charts
+      version: 2.17.0
+    - condition: csi-powermax.enabled
+      name: csi-powermax
+      repository: https://mgandharva.github.io/test-helm-charts
+      version: 2.17.0
+    - condition: csi-isilon.enabled
+      name: csi-isilon
+      repository: https://mgandharva.github.io/test-helm-charts
+      version: 2.17.0
+    - condition: csi-vxflexos.enabled
+      name: csi-vxflexos
+      repository: https://mgandharva.github.io/test-helm-charts
+      version: 2.17.0
+    - condition: csi-unity.enabled
+      name: csi-unity
+      repository: https://mgandharva.github.io/test-helm-charts
+      version: 2.17.0
+    - condition: csm-replication.enabled
+      name: csm-replication
+      repository: https://mgandharva.github.io/test-helm-charts
+      version: 1.15.0
+    - condition: karavi-observability.enabled
+      name: karavi-observability
+      repository: https://mgandharva.github.io/test-helm-charts
+      version: 1.15.0
+    - condition: cert-manager.enabled
+      name: cert-manager
+      repository: https://charts.jetstack.io
+      version: 1.11.0
+    description: Container Storage Modules(https://github.com/dell/csm) open source
+      suite of Kubernetes storage enablers for Dell Technologies storage products.
+    digest: b7da6b4cf0d4d1d9f04e8b244f71a8b25ede851437026d80f724a377c2317011
+    name: container-storage-modules
+    type: application
+    urls:
+    - https://github.com/mgandharva/test-helm-charts/releases/download/container-storage-modules-1.10.0/container-storage-modules-1.10.0.tgz
+    version: 1.10.0
   cosi:
   - apiVersion: v2
     appVersion: 1.1.0
@@ -218,4 +263,4 @@ entries:
     urls:
     - https://github.com/mgandharva/test-helm-charts/releases/download/karavi-observability-1.15.0/karavi-observability-1.15.0.tgz
     version: 1.15.0
-generated: "2026-05-12T13:52:57.904488476Z"
+generated: "2026-05-12T13:54:44.066318368Z"
