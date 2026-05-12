@@ -50,19 +50,19 @@ jobs:
           git tag -l | xargs git tag -d || true
           echo "Deleted all local release tags"
 
-      - name: Create release branch
+      - name: Create/update release branch from main
         run: |
           branch_name=release-v${{ inputs.version }}
-          # --no-tags: Avoid tag conflicts when re-releasing
-          git fetch origin --no-tags
+          # Fetch origin
+          git fetch origin
+          # Check if branch exists
           if git ls-remote --heads origin $branch_name | grep $branch_name; then
-            echo "Branch $branch_name already exists. Checking out."
-            git checkout $branch_name
-          else
-            echo "Branch $branch_name does not exist. Creating and checking out."
-            git checkout -b $branch_name
-            git push origin $branch_name
+            echo "Branch $branch_name already exists. Deleting it."
+            git push origin --delete $branch_name || true
           fi
+          # Create branch from main
+          git checkout -b $branch_name
+          git push origin $branch_name
 
       - name: Package container-storage-modules
         run: |
