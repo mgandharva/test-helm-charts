@@ -17,7 +17,7 @@ on:
         description: 'Release version. E.g. 1.17.0'
         required: true
       deleted_packages:
-        description: 'Comma-separated list of deleted chart packages to re-release. E.g. csi-powermax-2.17.0,csi-unity-2.17.0'
+        description: 'Comma-separated list of deleted chart packages to re-release. E.g. csi-powermax, csi-unity'
         required: false
 
 permissions:
