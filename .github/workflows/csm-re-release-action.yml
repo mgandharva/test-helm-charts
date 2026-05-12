@@ -64,20 +64,9 @@ jobs:
           git checkout -b $branch_name
           git push origin $branch_name
 
-      - name: Package container-storage-modules
+      - name: Create package directory
         run: |
           mkdir -p .cr-release-packages
-          if [ -d "container-storage-modules" ]; then
-            for chart in container-storage-modules/*/; do
-              if [ -d "$chart" ]; then
-                chart_name=$(basename "$chart")
-                echo "Building dependencies for container-storage-modules/$chart_name..."
-                helm dependency build "$chart" || echo "No dependencies to build for $chart_name"
-                echo "Packaging container-storage-modules/$chart_name..."
-                helm package "$chart" -d .cr-release-packages || echo "Failed to package $chart_name, skipping"
-              fi
-            done
-          fi
 
       - name: Auto-detect deleted charts (if not manually specified)
         if: ${{ inputs.deleted_packages == '' }}
@@ -138,7 +127,29 @@ jobs:
             fi
           done
 
-      - name: Re-upload packages to GitHub Releases
+      - name: Upload deleted charts to GitHub Releases
         run: |
-          # Upload without skip-existing to force re-release
+          # Upload deleted charts first
+          cr upload --owner ${{ github.repository_owner }} --git-repo ${{ github.event.repository.name }} --token ${{ secrets.GITHUB_TOKEN }} --package-path .cr-release-packages
+
+      - name: Package container-storage-modules (after deleted charts are released)
+        run: |
+          # Clean the package directory
+          rm -rf .cr-release-packages/*
+          
+          if [ -d "container-storage-modules" ]; then
+            for chart in container-storage-modules/*/; do
+              if [ -d "$chart" ]; then
+                chart_name=$(basename "$chart")
+                echo "Building dependencies for container-storage-modules/$chart_name..."
+                helm dependency build "$chart"
+                echo "Packaging container-storage-modules/$chart_name..."
+                helm package "$chart" -d .cr-release-packages
+              fi
+            done
+          fi
+
+      - name: Upload container-storage-modules to GitHub Releases
+        run: |
+          # Upload container-storage-modules
           cr upload --owner ${{ github.repository_owner }} --git-repo ${{ github.event.repository.name }} --token ${{ secrets.GITHUB_TOKEN }} --package-path .cr-release-packages
