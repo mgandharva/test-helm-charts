@@ -121,18 +121,20 @@ jobs:
           fi
 
           IFS=',' read -ra PACKAGES_ARRAY <<< "$PACKAGES"
-          for pkg in "${PACKAGES_ARRAY[@]}"; do
-            pkg=$(echo "$pkg" | xargs) # trim whitespace
-            echo "Processing package: $pkg"
-            # Find the chart directory for this package
-            chart_dir=$(find charts -name "Chart.yaml" -exec grep -l "^name: $pkg" {} \; | head -1 | xargs dirname)
+          for chart_name in "${PACKAGES_ARRAY[@]}"; do
+            chart_name=$(echo "$chart_name" | xargs) # trim whitespace
+            echo "Processing chart: $chart_name"
+            
+            # Find the chart directory
+            chart_dir=$(find charts -name "Chart.yaml" -exec grep -l "^name: $chart_name$" {} \; | head -1 | xargs -r dirname)
+            
             if [ -n "$chart_dir" ]; then
               echo "Building dependencies for $chart_dir..."
               helm dependency build "$chart_dir" || echo "No dependencies to build"
               echo "Packaging $chart_dir..."
               helm package "$chart_dir" -d .cr-release-packages
             else
-              echo "Warning: Chart directory not found for $pkg"
+              echo "Warning: Chart directory not found for $chart_name"
             fi
           done
 
