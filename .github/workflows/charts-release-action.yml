@@ -16,6 +16,14 @@ on:
       version:
         description: 'Release version. E.g. 1.14.0'
         required: true
+      release_mode:
+        description: 'normal: release changed charts only, re-release: re-upload deleted charts'
+        required: false
+        default: 'normal'
+        type: choice
+        options:
+          - normal
+          - re-release
 
 jobs:
   # This job will perform a helm release of all the csm charts that have been updated
@@ -33,6 +41,24 @@ jobs:
           git config user.name "$GITHUB_ACTOR"
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
+      - name: Delete tags in re-release mode
+        if: ${{ inputs.release_mode == 're-release' }}
+        run: |
+          git tag -l | xargs git tag -d || true
+          echo "Deleted all local tags"
+
+      - name: Manually package charts in re-release mode
+        if: ${{ inputs.release_mode == 're-release' }}
+        run: |
+          mkdir -p .cr-release-packages
+          for chart in charts/*/; do
+            if [ -d "$chart" ]; then
+              chart_name=$(basename "$chart")
+              echo "Packaging $chart_name..."
+              helm package "$chart" -d .cr-release-packages || echo "Failed to package $chart_name (likely a subchart), skipping"
+            fi
+          done
+
       - name: Set release branch name for install wizard release action
         run: |
           echo "release-v${{ inputs.version }}" >> branch_name.txt
@@ -48,7 +74,11 @@ jobs:
         run: |
           branch_name=release-v${{ inputs.version }}
 
-          git fetch origin
+          if [ "${{ inputs.release_mode }}" == "re-release" ]; then
+            git fetch origin --no-tags
+          else
+            git fetch origin
+          fi
           if git ls-remote --heads origin $branch_name | grep $branch_name; then
             echo "Branch $branch_name already exists. Skipping creation."
             git checkout $branch_name
@@ -58,7 +88,30 @@ jobs:
           fi
 
       # Run the helm chart release command
-      - name: Run csm chart-releaser
+      - name: Install chart-releaser
+        if: ${{ inputs.release_mode == 're-release' }}
+        run: |
+          curl -sSLo cr.tar.gz https://github.com/helm/chart-releaser/releases/download/v1.7.0/chart-releaser_1.7.0_linux_amd64.tar.gz
+          tar -xzf cr.tar.gz
+          sudo mv cr /usr/local/bin/cr
+          rm cr.tar.gz
+
+      - name: Upload packages in re-release mode
+        if: ${{ inputs.release_mode == 're-release' }}
+        run: |
+          cr upload --owner mgandharva --git-repo test-helm-charts --token ${{ secrets.GITHUB_TOKEN }} --package-path .cr-release-packages --skip-existing
+          cr index --owner mgandharva --git-repo test-helm-charts --token ${{ secrets.GITHUB_TOKEN }} --push
+          # Force gh-pages update to trigger pages-build-deployment
+          git fetch origin gh-pages
+          git checkout gh-pages
+          git commit --allow-empty -m "Force update for re-release"
+          git push origin gh-pages
+          git checkout release-v${{ inputs.version }}
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Run csm chart-releaser (normal mode)
+        if: ${{ inputs.release_mode == 'normal' }}
         uses: helm/chart-releaser-action@v1.7.0
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
