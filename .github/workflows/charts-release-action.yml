@@ -41,13 +41,16 @@ jobs:
           git config user.name "$GITHUB_ACTOR"
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
-      - name: Delete tags in re-release mode
+      # ===== RE-RELEASE MODE STEPS =====
+      # Delete local release tags to ensure clean state for re-releasing deleted charts
+      # This prevents old local tags from interfering with the re-upload process
+      - name: Delete local release tags (re-release mode)
         if: ${{ inputs.release_mode == 're-release' }}
         run: |
           git tag -l | xargs git tag -d || true
-          echo "Deleted all local tags"
+          echo "Deleted all local release tags"
 
-      - name: Manually package charts in re-release mode
+      - name: Manually package charts (re-release mode)
         if: ${{ inputs.release_mode == 're-release' }}
         run: |
           mkdir -p .cr-release-packages
@@ -61,6 +64,7 @@ jobs:
             fi
           done
 
+      # ===== SHARED STEPS (BOTH MODES) =====
       - name: Set release branch name for install wizard release action
         run: |
           echo "release-v${{ inputs.version }}" >> branch_name.txt
@@ -90,7 +94,7 @@ jobs:
           fi
 
       # Run the helm chart release command
-      - name: Install chart-releaser
+      - name: Install chart-releaser (re-release mode)
         if: ${{ inputs.release_mode == 're-release' }}
         run: |
           curl -sSLo cr.tar.gz https://github.com/helm/chart-releaser/releases/download/v1.7.0/chart-releaser_1.7.0_linux_amd64.tar.gz
@@ -98,11 +102,11 @@ jobs:
           sudo mv cr /usr/local/bin/cr
           rm cr.tar.gz
 
-      - name: Upload packages in re-release mode
+      - name: Upload packages (re-release mode)
         if: ${{ inputs.release_mode == 're-release' }}
         run: |
-          cr upload --owner mgandharva --git-repo test-helm-charts --token ${{ secrets.GITHUB_TOKEN }} --package-path .cr-release-packages --skip-existing
-          cr index --owner mgandharva --git-repo test-helm-charts --token ${{ secrets.GITHUB_TOKEN }} --push
+          cr upload --owner ${{ github.repository_owner }} --git-repo ${{ github.event.repository.name }} --token ${{ secrets.GITHUB_TOKEN }} --package-path .cr-release-packages --skip-existing
+          cr index --owner ${{ github.repository_owner }} --git-repo ${{ github.event.repository.name }} --token ${{ secrets.GITHUB_TOKEN }} --push
           # Force gh-pages update to trigger pages-build-deployment
           git fetch origin gh-pages
           git checkout gh-pages
@@ -112,6 +116,7 @@ jobs:
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 
+      # ===== NORMAL MODE STEP =====
       - name: Run csm chart-releaser (normal mode)
         if: ${{ inputs.release_mode == 'normal' }}
         uses: helm/chart-releaser-action@v1.7.0
