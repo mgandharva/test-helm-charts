@@ -1,0 +1,149 @@
+# Copyright (c) 2025 Dell Inc., or its subsidiaries. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+
+# This Github action will re-release container-storage-modules and specified deleted charts
+name: Re-release Container Storage Modules
+
+# Invocable as a manual workflow
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version. E.g. 1.17.0'
+        required: true
+      deleted_packages:
+        description: 'Comma-separated list of deleted chart packages to re-release. E.g. csi-powermax-2.17.0,csi-unity-2.17.0'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  re-release-container-storage-modules:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out code
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.16.1'
+
+      - name: Install chart-releaser
+        run: |
+          curl -sSLo cr.tar.gz https://github.com/helm/chart-releaser/releases/download/v1.7.0/chart-releaser_1.7.0_linux_amd64.tar.gz
+          tar -xzf cr.tar.gz
+          echo "$PWD" >> $GITHUB_PATH
+          rm cr.tar.gz
+
+      - name: Delete local release tags
+        run: |
+          git tag -l | xargs git tag -d || true
+          echo "Deleted all local release tags"
+
+      - name: Create release branch
+        run: |
+          branch_name=release-v${{ inputs.version }}
+          # --no-tags: Avoid tag conflicts when re-releasing
+          git fetch origin --no-tags
+          if git ls-remote --heads origin $branch_name | grep $branch_name; then
+            echo "Branch $branch_name already exists. Checking out."
+            git checkout $branch_name
+          else
+            echo "Branch $branch_name does not exist. Creating and checking out."
+            git checkout -b $branch_name
+            git push origin $branch_name
+          fi
+
+      - name: Package container-storage-modules
+        run: |
+          mkdir -p .cr-release-packages
+          if [ -d "container-storage-modules" ]; then
+            for chart in container-storage-modules/*/; do
+              if [ -d "$chart" ]; then
+                chart_name=$(basename "$chart")
+                echo "Building dependencies for container-storage-modules/$chart_name..."
+                helm dependency build "$chart" || echo "No dependencies to build for $chart_name"
+                echo "Packaging container-storage-modules/$chart_name..."
+                helm package "$chart" -d .cr-release-packages || echo "Failed to package $chart_name, skipping"
+              fi
+            done
+          fi
+
+      - name: Auto-detect deleted charts (if not manually specified)
+        if: ${{ inputs.deleted_packages == '' }}
+        id: detect-deleted
+        run: |
+          # Get all existing GitHub releases
+          releases=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/releases | jq -r '.[].tag_name')
+
+          # Find charts that have releases but don't exist in charts/ directory
+          deleted_charts=""
+          for release in $releases; do
+            # Extract chart name from release tag (format: chartname-version)
+            chart_name=$(echo "$release" | sed 's/-[0-9].*//')
+            # Check if chart directory exists
+            if [ ! -d "charts/$chart_name" ] && [ -n "$chart_name" ]; then
+              echo "Found deleted chart: $chart_name (release: $release)"
+              if [ -z "$deleted_charts" ]; then
+                deleted_charts="$chart_name"
+              else
+                deleted_charts="$deleted_charts,$chart_name"
+              fi
+            fi
+          done
+
+          if [ -z "$deleted_charts" ]; then
+            echo "No deleted charts detected"
+            echo "deleted_charts=" >> $GITHUB_OUTPUT
+          else
+            echo "Auto-detected deleted charts: $deleted_charts"
+            echo "deleted_charts=$deleted_charts" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Package deleted charts
+        if: ${{ inputs.deleted_packages != '' || steps.detect-deleted.outputs.deleted_charts != '' }}
+        run: |
+          if [ -n "${{ inputs.deleted_packages }}" ]; then
+            PACKAGES="${{ inputs.deleted_packages }}"
+          else
+            PACKAGES="${{ steps.detect-deleted.outputs.deleted_charts }}"
+          fi
+
+          IFS=',' read -ra PACKAGES_ARRAY <<< "$PACKAGES"
+          for pkg in "${PACKAGES_ARRAY[@]}"; do
+            pkg=$(echo "$pkg" | xargs) # trim whitespace
+            echo "Processing package: $pkg"
+            # Find the chart directory for this package
+            chart_dir=$(find charts -name "Chart.yaml" -exec grep -l "^name: $pkg" {} \; | head -1 | xargs dirname)
+            if [ -n "$chart_dir" ]; then
+              echo "Building dependencies for $chart_dir..."
+              helm dependency build "$chart_dir" || echo "No dependencies to build"
+              echo "Packaging $chart_dir..."
+              helm package "$chart_dir" -d .cr-release-packages
+            else
+              echo "Warning: Chart directory not found for $pkg"
+            fi
+          done
+
+      - name: Re-upload packages to GitHub Releases
+        run: |
+          # Upload without skip-existing to force re-release
+          cr upload --owner ${{ github.repository_owner }} --git-repo ${{ github.event.repository.name }} --token ${{ secrets.GITHUB_TOKEN }} --package-path .cr-release-packages
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
